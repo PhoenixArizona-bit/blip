@@ -1,0 +1,46 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download Sora fonts
+        run: |
+          mkdir -p blip/app/src/main/res/font
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Regular.ttf" -o blip/app/src/main/res/font/sora_regular.ttf
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Medium.ttf" -o blip/app/src/main/res/font/sora_medium.ttf
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-SemiBold.ttf" -o blip/app/src/main/res/font/sora_semibold.ttf
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Bold.ttf" -o blip/app/src/main/res/font/sora_bold.ttf
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.9'
+
+      - name: Make gradlew executable
+        run: chmod +x blip/gradlew
+
+      - name: Build Debug APK
+        run: cd blip && ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: blip-debug
+          path: blip/app/build/outputs/apk/debug/*.apk
