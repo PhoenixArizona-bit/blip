@@ -28,10 +28,10 @@ jobs:
           curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-SemiBold.ttf" -o blip-fixed/app/src/main/res/font/sora_semibold.ttf
           curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Bold.ttf" -o blip-fixed/app/src/main/res/font/sora_bold.ttf
 
-      - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.9'
+      - name: Download Gradle wrapper jar
+        run: |
+          mkdir -p blip-fixed/gradle/wrapper
+          curl -L "https://github.com/gradle/gradle/raw/v8.9.0/gradle/wrapper/gradle-wrapper.jar" -o blip-fixed/gradle/wrapper/gradle-wrapper.jar
 
       - name: Make gradlew executable
         run: chmod +x blip-fixed/gradlew
