@@ -22,11 +22,11 @@ jobs:
 
       - name: Download Sora fonts
         run: |
-          mkdir -p blip/app/src/main/res/font
-          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Regular.ttf" -o blip/app/src/main/res/font/sora_regular.ttf
-          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Medium.ttf" -o blip/app/src/main/res/font/sora_medium.ttf
-          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-SemiBold.ttf" -o blip/app/src/main/res/font/sora_semibold.ttf
-          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Bold.ttf" -o blip/app/src/main/res/font/sora_bold.ttf
+          mkdir -p blip-fixed/app/src/main/res/font
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Regular.ttf" -o blip-fixed/app/src/main/res/font/sora_regular.ttf
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Medium.ttf" -o blip-fixed/app/src/main/res/font/sora_medium.ttf
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-SemiBold.ttf" -o blip-fixed/app/src/main/res/font/sora_semibold.ttf
+          curl -L "https://github.com/tokotype/Sora/raw/master/fonts/ttf/Sora-Bold.ttf" -o blip-fixed/app/src/main/res/font/sora_bold.ttf
 
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -34,13 +34,13 @@ jobs:
           gradle-version: '8.9'
 
       - name: Make gradlew executable
-        run: chmod +x blip/gradlew
+        run: chmod +x blip-fixed/gradlew
 
       - name: Build Debug APK
-        run: cd blip && ./gradlew assembleDebug
+        run: cd blip-fixed && ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: blip-debug
-          path: blip/app/build/outputs/apk/debug/*.apk
+          path: blip-fixed/app/build/outputs/apk/debug/*.apk
