@@ -1,0 +1,128 @@
+package com.blip.app.data.mesh
+
+import com.blip.app.data.ble.BleManager
+import com.blip.app.data.model.BlipPacket
+import com.blip.app.data.model.MeshNode
+import com.blip.app.data.model.PacketType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class MeshRouter @Inject constructor(
+    private val bleManager: BleManager
+) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    // destinationUserId -> BLE device address (MAC)
+    private val routingTable = mutableMapOf<String, String>()
+
+    // Dedup cache: prevent re-processing or re-relaying the same packet
+    private val seenPacketIds = LinkedHashSet<String>()
+    private val MAX_SEEN_CACHE = 500
+
+    private val _meshNodes = MutableStateFlow<List<MeshNode>>(emptyList())
+    val meshNodes: StateFlow<List<MeshNode>> = _meshNodes
+
+    // FIX: was a plain var that BlipMeshService tried to set via a non-existent
+    // setLocalUserId() method — causing a compile error and leaving localUserId
+    // permanently "" so no packet was ever delivered to self.
+    var localUserId: String = ""
+        private set
+
+    // ── Called by BlipMeshService at startup and by BlipViewModel init ────────
+    fun setLocalUserId(id: String) {
+        localUserId = id
+    }
+
+    init {
+        scope.launch {
+            bleManager.nearbyUsers.collect { users ->
+                updateMeshTopology(users.map { user ->
+                    MeshNode(
+                        userId        = user.id,
+                        userName      = user.name,
+                        avatarColor   = user.avatarColor,
+                        deviceAddress = user.deviceAddress,
+                        rssi          = user.rssi,
+                        hopsFromSelf  = user.meshHops
+                    )
+                })
+            }
+        }
+        // NOTE: we do NOT collect incomingPackets here — the ViewModel does that
+        // directly on BleManager so it can update the DB on the right coroutine scope.
+        // MeshRouter only handles relay logic for packets NOT destined for self.
+        scope.launch {
+            bleManager.incomingPackets.collect { packet ->
+                packet?.let { maybeRelay(it) }
+            }
+        }
+    }
+
+    // ── Send a packet to a specific user ──────────────────────────────────────
+    fun sendToUser(destinationId: String, packet: BlipPacket) {
+        // FIX: look up the routing table first (populated by updateMeshTopology
+        // which runs every time nearbyUsers updates — so by the time the user taps
+        // Send, the table already has the peer's device address).
+        val address = routingTable[destinationId]
+        if (address != null) {
+            bleManager.sendPacket(address, packet)
+        } else {
+            // Fallback broadcast — peer not yet in routing table (e.g. multi-hop)
+            bleManager.broadcastPacket(packet)
+        }
+    }
+
+    // ── Relay packets not destined for self ───────────────────────────────────
+    private fun maybeRelay(packet: BlipPacket) {
+        // If this packet is for us, let the ViewModel handle it — don't relay
+        if (packet.recipientId == localUserId || packet.recipientId == "BROADCAST") return
+
+        val packetKey = "${packet.senderId}:${packet.timestamp}:${packet.type}"
+        if (seenPacketIds.contains(packetKey)) return
+        seenPacketIds.add(packetKey)
+        if (seenPacketIds.size > MAX_SEEN_CACHE) seenPacketIds.remove(seenPacketIds.iterator().next())
+
+        // Learn route from sender
+        val senderUser = bleManager.nearbyUsers.value.firstOrNull { it.id == packet.senderId }
+        if (senderUser != null) routingTable[packet.senderId] = senderUser.deviceAddress
+
+        // Relay if TTL allows
+        if (packet.ttl > 1) {
+            val relayed = packet.copy(ttl = packet.ttl - 1)
+            val nextHop = routingTable[packet.recipientId]
+            if (nextHop != null) bleManager.sendPacket(nextHop, relayed)
+            else bleManager.broadcastPacket(relayed)
+        }
+    }
+
+    private fun updateMeshTopology(nodes: List<MeshNode>) {
+        _meshNodes.value = nodes
+        // FIX: populate routing table eagerly from nearbyUsers, not lazily from
+        // received packets. This means sendToUser works on the very first message
+        // without needing to have received anything from the peer first.
+        nodes.forEach { node ->
+            routingTable[node.userId] = node.deviceAddress
+        }
+    }
+
+    fun getMeshStats(): MeshStats = MeshStats(
+        totalNodes   = _meshNodes.value.size,
+        directPeers  = _meshNodes.value.count { it.hopsFromSelf == 0 },
+        relayedPeers = _meshNodes.value.count { it.hopsFromSelf > 0 },
+        routeCount   = routingTable.size
+    )
+}
+
+data class MeshStats(
+    val totalNodes: Int,
+    val directPeers: Int,
+    val relayedPeers: Int,
+    val routeCount: Int
+)

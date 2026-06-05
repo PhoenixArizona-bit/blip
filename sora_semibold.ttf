@@ -1,0 +1,312 @@
+package com.blip.app.ui.screens
+
+import android.Manifest
+import android.os.Build
+import androidx.compose.animation.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.*
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.*
+import com.blip.app.data.model.ConnectionState
+import com.blip.app.data.model.RequestStatus
+import com.blip.app.ui.components.*
+import com.blip.app.ui.theme.BlipColors
+import com.blip.app.ui.theme.SoraFamily
+import com.blip.app.viewmodel.BlipViewModel
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun HomeScreen(
+    viewModel: BlipViewModel,
+    onOpenChat: (peerId: String, peerName: String, peerColor: Int) -> Unit,
+    onOpenMeshMap: () -> Unit
+) {
+    val nearbyUsers      by viewModel.nearbyUsers.collectAsState()
+    val isScanning       by viewModel.isScanning.collectAsState()
+    val userName         by viewModel.userName.collectAsState(initial = null)
+    val avatarColor      by viewModel.avatarColor.collectAsState(initial = BlipColors.AvatarColors[0])
+    val pendingRequests  by viewModel.pendingConnectionReqs.collectAsState(initial = emptyList())
+
+    var pendingConnectUser by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
+
+    val blePermissions = rememberMultiplePermissionsState(
+        permissions = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_SCAN)
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    )
+
+    LaunchedEffect(blePermissions.allPermissionsGranted) {
+        if (blePermissions.allPermissionsGranted) viewModel.startMesh()
+        else blePermissions.launchMultiplePermissionRequest()
+    }
+
+    // ── Incoming request dialog ────────────────────────────────────────────
+    val firstPending = pendingRequests.firstOrNull()
+    if (firstPending != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            icon = {
+                BlipAvatar(firstPending.peerName, firstPending.peerAvatarColor, size = 52.dp)
+            },
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Connection Request",
+                        fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "${firstPending.peerName} wants to connect with you.",
+                        fontFamily = SoraFamily, fontSize = 14.sp, color = BlipColors.Muted
+                    )
+                    // Device address tag for disambiguation
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Device: ${firstPending.peerDeviceAddress.takeLast(8)}",
+                        fontFamily = SoraFamily, fontSize = 11.sp,
+                        color = BlipColors.Primary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.acceptConnectionRequest(firstPending.peerId) },
+                    colors = ButtonDefaults.buttonColors(containerColor = BlipColors.Primary)
+                ) {
+                    Text("Accept", fontFamily = SoraFamily)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { viewModel.rejectConnectionRequest(firstPending.peerId) }) {
+                    Text("Decline", fontFamily = SoraFamily)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // ── Outgoing request confirmation dialog ───────────────────────────────
+    pendingConnectUser?.let { (peerId, peerName, peerColor) ->
+        val peer = nearbyUsers.find { it.id == peerId }
+        AlertDialog(
+            onDismissRequest = { pendingConnectUser = null },
+            icon = { BlipAvatar(peerName, peerColor, size = 52.dp) },
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Connect with $peerName?",
+                        fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold
+                    )
+                    // Device tag for disambiguation — critical if multiple users share a name
+                    if (peer != null && peer.deviceTag.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Default.PhonelinkRing, null,
+                                tint = BlipColors.Muted,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "#${peer.deviceTag}  ·  ${rssiLabel(peer.rssi)}",
+                                fontFamily = SoraFamily, fontSize = 12.sp,
+                                color = BlipColors.Muted
+                            )
+                        }
+                    }
+                }
+            },
+            text = {
+                Text(
+                    "Send a connection request to $peerName. They need to accept before you can chat.",
+                    fontFamily = SoraFamily, fontSize = 14.sp, color = BlipColors.Muted
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.sendConnectionRequest(peerId, peerName, peerColor)
+                        pendingConnectUser = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BlipColors.Primary)
+                ) {
+                    Text("Send Request", fontFamily = SoraFamily)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingConnectUser = null }) {
+                    Text("Cancel", fontFamily = SoraFamily)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            BlipTopBar(
+                title = "Blip",
+                actions = {
+                    IconButton(onClick = onOpenMeshMap) {
+                        Icon(Icons.Default.Hub, null, tint = Color.White)
+                    }
+                }
+            )
+        },
+        containerColor = BlipColors.Background
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding)) {
+
+            // ── Self Card ──────────────────────────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BlipAvatar(
+                        name = userName ?: "?",
+                        color = avatarColor,
+                        size = 52.dp,
+                        showOnline = isScanning
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            userName ?: "Unknown",
+                            fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp, color = BlipColors.OnSurface
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(
+                                        if (isScanning) BlipColors.Online else BlipColors.Muted,
+                                        CircleShape
+                                    )
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (isScanning) "Mesh active" else "Offline",
+                                fontFamily = SoraFamily, fontSize = 13.sp, color = BlipColors.Muted
+                            )
+                        }
+                    }
+                    val stats = viewModel.getMeshStats()
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "${stats.totalNodes}",
+                            fontFamily = SoraFamily, fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp, color = BlipColors.Primary
+                        )
+                        Text("nearby", fontFamily = SoraFamily, fontSize = 11.sp, color = BlipColors.Muted)
+                    }
+                }
+            }
+
+            // ── Section header with animated scanner indicator ──────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Nearby", fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp, color = BlipColors.Muted, modifier = Modifier.weight(1f)
+                )
+                if (isScanning) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Animated scanner SVG-style indicator instead of CircularProgressIndicator
+                        BlipScannerAnimation(
+                            modifier = Modifier.size(20.dp),
+                            color = BlipColors.Primary,
+                            isActive = true
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Scanning...", fontFamily = SoraFamily, fontSize = 12.sp, color = BlipColors.Primary)
+                    }
+                }
+            }
+
+            if (nearbyUsers.isEmpty()) {
+                EmptyNearbyState(isScanning = isScanning)
+            } else {
+                LazyColumn {
+                    items(nearbyUsers, key = { it.id }) { user ->
+                        UserCard(
+                            user = user,
+                            onClick = {
+                                when (user.connectionState) {
+                                    ConnectionState.ACCEPTED ->
+                                        onOpenChat(user.id, user.name, user.avatarColor)
+                                    ConnectionState.DISCOVERED, ConnectionState.CONNECTED ->
+                                        pendingConnectUser = Triple(user.id, user.name, user.avatarColor)
+                                    ConnectionState.HANDSHAKE_SENT -> { /* waiting */ }
+                                    ConnectionState.CONNECTING -> { /* connecting... */ }
+                                    ConnectionState.REJECTED -> { /* show toast ideally */ }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptyNearbyState(isScanning: Boolean = false) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 48.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Animated scanner SVG instead of emoji
+        BlipScannerAnimation(
+            modifier = Modifier.size(110.dp),
+            color = BlipColors.Primary,
+            isActive = isScanning
+        )
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "No one nearby yet",
+            fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp, color = BlipColors.OnSurface
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Blip automatically discovers\nnearby users via Bluetooth.",
+            fontFamily = SoraFamily, fontSize = 14.sp,
+            color = BlipColors.Muted, lineHeight = 22.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}

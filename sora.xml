@@ -1,0 +1,237 @@
+package com.blip.app.ui.screens
+
+import androidx.compose.animation.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.*
+import com.blip.app.ui.components.BlipAvatar
+import com.blip.app.ui.components.BlipScannerAnimation
+import com.blip.app.ui.components.BluetoothSvgIcon
+import com.blip.app.ui.theme.BlipColors
+import com.blip.app.ui.theme.SoraFamily
+import com.blip.app.viewmodel.BlipViewModel
+
+@Composable
+fun OnboardingScreen(viewModel: BlipViewModel, onDone: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var selectedColor by remember { mutableStateOf(BlipColors.AvatarColors[0]) }
+    var step by remember { mutableIntStateOf(0) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(BlipColors.GradientStart, BlipColors.GradientEnd, BlipColors.Background)
+                )
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            AnimatedContent(targetState = step, label = "step") { s ->
+                when (s) {
+                    0 -> WelcomePage { step = 1 }
+                    1 -> NamePage(name, { name = it }) { if (name.isNotBlank()) step = 2 }
+                    2 -> AvatarPage(name, selectedColor, { selectedColor = it }) {
+                        viewModel.completeOnboarding(name.trim(), selectedColor)
+                        onDone()
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            repeat(3) { i ->
+                Box(
+                    modifier = Modifier
+                        .size(if (i == step) 24.dp else 8.dp, 8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (i == step) Color.White else Color.White.copy(alpha = 0.4f))
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun WelcomePage(onNext: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // SVG-style scanner animation instead of ⚡ emoji
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(110.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(Color.White.copy(alpha = 0.15f))
+        ) {
+            BlipScannerAnimation(
+                modifier = Modifier.size(80.dp),
+                color = Color.White,
+                isActive = true
+            )
+        }
+        Spacer(Modifier.height(32.dp))
+        Text(
+            "Blip", color = Color.White,
+            fontFamily = SoraFamily, fontWeight = FontWeight.Bold,
+            fontSize = 48.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Offline messaging.\nNo internet. No accounts.\nJust Bluetooth.",
+            color = Color.White.copy(alpha = 0.85f),
+            fontFamily = SoraFamily, fontSize = 16.sp,
+            textAlign = TextAlign.Center, lineHeight = 26.sp
+        )
+        Spacer(Modifier.height(48.dp))
+        Button(
+            onClick = onNext,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().height(54.dp)
+        ) {
+            Text(
+                "Get Started", color = BlipColors.Primary,
+                fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun NamePage(name: String, onNameChange: (String) -> Unit, onNext: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "What's your name?",
+            color = Color.White, fontFamily = SoraFamily,
+            fontWeight = FontWeight.Bold, fontSize = 28.sp, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "This is how others on Blip will see you.",
+            color = Color.White.copy(alpha = 0.8f),
+            fontFamily = SoraFamily, fontSize = 15.sp, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(40.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = onNameChange,
+            placeholder = {
+                Text("Your name", fontFamily = SoraFamily, color = Color.White.copy(alpha = 0.5f))
+            },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color.White,
+                unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                cursorColor = Color.White
+            ),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+            textStyle = androidx.compose.ui.text.TextStyle(
+                fontFamily = SoraFamily, fontSize = 18.sp
+            )
+        )
+        Spacer(Modifier.height(32.dp))
+        Button(
+            onClick = onNext,
+            enabled = name.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().height(54.dp)
+        ) {
+            Text(
+                "Continue", color = BlipColors.Primary,
+                fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun AvatarPage(
+    name: String,
+    selectedColor: Int,
+    onColorSelect: (Int) -> Unit,
+    onDone: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "Pick your color",
+            color = Color.White, fontFamily = SoraFamily,
+            fontWeight = FontWeight.Bold, fontSize = 28.sp
+        )
+        Spacer(Modifier.height(32.dp))
+        BlipAvatar(name, selectedColor, size = 80.dp)
+        Spacer(Modifier.height(32.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            BlipColors.AvatarColors.chunked(5).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { color ->
+                        val isSelected = color == selectedColor
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color(color))
+                                .clickable { onColorSelect(color) }
+                                .then(
+                                    if (isSelected) Modifier.border(3.dp, Color.White, CircleShape)
+                                    else Modifier
+                                )
+                        ) {
+                            if (isSelected) {
+                                Icon(Icons.Default.Check, null, tint = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(40.dp))
+        Button(
+            onClick = onDone,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().height(54.dp)
+        ) {
+            // SVG BLE icon inline + text instead of emoji
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                BluetoothSvgIcon(
+                    modifier = Modifier.size(18.dp),
+                    color = BlipColors.Primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Start Blipping", color = BlipColors.Primary,
+                    fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+                )
+            }
+        }
+    }
+}
