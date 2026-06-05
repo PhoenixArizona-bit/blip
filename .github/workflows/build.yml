@@ -20,16 +20,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Download Sora fonts
-        run: |
-          mkdir -p blip-fixed/app/src/main/res/font
-          curl -L "https://github.com/sursly/sora/raw/master/fonts/ttf/Sora-Regular.ttf" -o blip-fixed/app/src/main/res/font/sora_regular.ttf
-          curl -L "https://github.com/sursly/sora/raw/master/fonts/ttf/Sora-Medium.ttf" -o blip-fixed/app/src/main/res/font/sora_medium.ttf
-          curl -L "https://github.com/sursly/sora/raw/master/fonts/ttf/Sora-SemiBold.ttf" -o blip-fixed/app/src/main/res/font/sora_semibold.ttf
-          curl -L "https://github.com/sursly/sora/raw/master/fonts/ttf/Sora-Bold.ttf" -o blip-fixed/app/src/main/res/font/sora_bold.ttf
-          echo "Font files:"
-          ls -lh blip-fixed/app/src/main/res/font/
-
       - name: Download Gradle wrapper jar
         run: |
           mkdir -p blip-fixed/gradle/wrapper
